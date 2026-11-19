@@ -80,12 +80,86 @@
   <script>
     /*************************************************************************
      * SAMS (Student Academic Management System) - MITS Gwalior (CIOT)
-     * Official Session: July – Dec 2026 (w.e.f. 24.08.2026)
-     * Reactive Cross-Portal State + localStorage Persistence
+     * Real-Time Live Date & Clock Engine + Cross-Portal Persistence
      *************************************************************************/
 
-    const STORAGE_KEY = "MITS_SAMS_CIOT_2026_V5";
-    const CURRENT_DATE_STR = "Tuesday, November 17, 2026";
+    const STORAGE_KEY = "MITS_SAMS_CIOT_2026_V5_LIVE";
+
+    /**
+     * Real-Time Date, Day & Clock Helper Engine
+     * Dynamically reads user's current Date() so Thursday shows Thursday, etc.
+     */
+    function getLiveDateInfo(now = new Date()) {
+      const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const actualDayName = weekdays[now.getDay()];
+      const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+      const academicDay = isWeekend ? 'Monday' : actualDayName;
+
+      const formattedDate = now.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      });
+
+      const formattedTime = now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+      return {
+        now,
+        actualDayName,
+        academicDay,
+        isWeekend,
+        formattedDate,
+        formattedTime,
+        currentMinutes
+      };
+    }
+
+    /**
+     * Parses timetable slot windows like "09:00 AM - 11:00 AM" or "12:00 Noon - 01:00 PM"
+     * and compares against current real-time minutes on the actual current weekday.
+     */
+    function getSlotLiveStatus(slotTimeStr, dayName) {
+      const info = getLiveDateInfo();
+      if (info.isWeekend || info.actualDayName !== dayName) {
+        return null;
+      }
+
+      const parsePart = (str) => {
+        const clean = str.replace(/Noon/i, 'PM').trim();
+        const match = clean.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (!match) return null;
+        let hrs = parseInt(match[1], 10);
+        const mins = parseInt(match[2], 10);
+        const mer = match[3].toUpperCase();
+        if (mer === 'PM' && hrs !== 12) hrs += 12;
+        if (mer === 'AM' && hrs === 12) hrs = 0;
+        return hrs * 60 + mins;
+      };
+
+      const parts = slotTimeStr.split('-');
+      if (parts.length !== 2) return null;
+      const startMins = parsePart(parts[0]);
+      const endMins = parsePart(parts[1]);
+      if (startMins === null || endMins === null) return null;
+
+      if (info.currentMinutes >= startMins && info.currentMinutes < endMins) {
+        return 'LIVE NOW';
+      } else if (info.currentMinutes >= endMins) {
+        return 'COMPLETED';
+      } else {
+        return 'UPCOMING';
+      }
+    }
+
+    const INITIAL_LIVE = getLiveDateInfo();
 
     const DEFAULT_STATE = {
       currentPortal: 'landing', // 'landing' | 'student' | 'faculty' | 'club'
@@ -94,20 +168,87 @@
       clubTab: 'create-event',
       sidebarOpen: false,
 
-      selectedDay: 'Tuesday',
-      selectedBatch: 'Batch A', // 'Batch A' | 'Batch B' (Only affects Lab sessions)
+      selectedDay: INITIAL_LIVE.academicDay, // Dynamically initialized to today's actual weekday!
+      selectedBatch: 'Batch A',
       selectedCourseCode: '33261101',
       clubCategoryFilter: 'All',
-      servicesSubTab: 'fees', // 'fees' | 'scholarships' | 'bonafide' | 'admit-help'
+      servicesSubTab: 'fees',
       feeSubTab: 'sem1',
-      facultyCohortMode: 'all80', // 'all80' | 'batchA' | 'batchB'
-      facultyMarksTier: 'classQuiz', // 'classQuiz' | 'centralQuiz' | 'minor' | 'major'
+      facultyCohortMode: 'all80',
+      facultyMarksTier: 'classQuiz',
       activeQuizIndex: 0,
+      noticeFilterCategory: 'All',
+
+      notices: [
+        {
+          id: "NTC-101",
+          category: "Quiz",
+          title: "3 Live In-Class Quizzes Active on SAMS Portal",
+          body: "In-Class Quizzes for 33261101 (Intro to ECE), 33261102 (Computer Programming), and 33261104 (Digital Logic Design) are open under Fullscreen DND Proctoring.",
+          date: "Today • 10:15 AM",
+          issuedBy: "CIOT Academic Cell",
+          unread: true
+        },
+        {
+          id: "NTC-102",
+          category: "Academic",
+          title: "Thursday Lab Batch Schedule Reminder (M004 & M005)",
+          body: "Batch A (40 students) reports to Room M005 for Computer Programming Lab (33261106A) and Batch B (40 students) reports to Room M004 for Embedded Programming Lab (33261107B) from 09:00 AM to 11:00 AM.",
+          date: "Today • 08:30 AM",
+          issuedBy: "Dr. Abhishek Sharma (Branch Coordinator)",
+          unread: true
+        },
+        {
+          id: "NTC-103",
+          category: "Academic",
+          title: "Micro-Project-I (33261109) Expo & Milestone-4 Deadline",
+          body: "Milestone-4 validation logs are due Nov 20, 2026. Final CIOT Micro-Project-I Expo is scheduled for Nov 25–27, 2026 at CIOT Atrium & Seminar Hall.",
+          date: "Nov 18, 2026 • 04:20 PM",
+          issuedBy: "Dr. Abhishek Sharma (AS)",
+          unread: true
+        },
+        {
+          id: "NTC-104",
+          category: "Exams",
+          title: "Theory Minor Exams Evaluation & Dec 2026 Major Datesheet",
+          body: "Theory Minor (Nov 2–6) evaluation is in final moderation. Lab Major Practicals commence Dec 04, 2026 and Theory CBT Majors commence Dec 10, 2026.",
+          date: "Nov 17, 2026 • 02:10 PM",
+          issuedBy: "Controller of Examinations, MITS",
+          unread: true
+        },
+        {
+          id: "NTC-105",
+          category: "Scholarship",
+          title: "MP Post-Matric, MMVY & AICTE Pragati Verification Open",
+          body: "Students applying for MP Post-Matric, Mukhyamantri Medhavi Chhatra Yojana (MMVY), or AICTE Pragati can download digitally signed Scholarship Bonafides from the Fees & Scholarships Hub.",
+          date: "Nov 16, 2026 • 11:00 AM",
+          issuedBy: "Student Welfare & Scholarship Cell",
+          unread: true
+        },
+        {
+          id: "NTC-106",
+          category: "Events",
+          title: "CodeRush 3.0 & TechPulse 2026 Registrations Closing Soon",
+          body: "MITS ACM Student Chapter & IoT Society invite 1st Year CIOT students to register for CodeRush 3.0 (Nov 21) and TechPulse 2026 (Nov 23) at SH-3 & SH-5.",
+          date: "Nov 15, 2026 • 05:45 PM",
+          issuedBy: "MITS Student Activity Council (SAC)",
+          unread: true
+        },
+        {
+          id: "NTC-107",
+          category: "Academic",
+          title: "Semester Proficiency (33261108) Panel Presentations",
+          body: "10-minute comprehensive subject overview presentations will be evaluated Nov 27–29, 2026 under Dr. Namita Arya in Room M003.",
+          date: "Nov 14, 2026 • 01:30 PM",
+          issuedBy: "Dr. Namita Arya (NA)",
+          unread: false
+        }
+      ],
 
       announcements: [
-        "📢 Live In-Class Quiz active for 33261101 Introduction to Electrical and Computer Engineering — Attempt in Live Quizzes tab!",
+        "📢 3 Live In-Class Quizzes active (Intro to ECE, Computer Programming & DLD) — Attempt in Live Quizzes tab!",
         "🏆 Micro-Project-I (33261109) Expo scheduled for Nov 25–27, 2026 at CIOT Atrium & Seminar Hall.",
-        "📝 Theory Minor Exams (Nov 2–6, 2026) evaluation in progress — Result Pending.",
+        "📝 Theory Minor Exams (Nov 2–6, 2026) evaluation in progress — Lab Majors start Dec 04, 2026.",
         "🎓 Semester Proficiency (33261108) Presentations scheduled Nov 27–29, 2026 under Dr. Namita Arya.",
         "💰 MP Post-Matric & Mukhyamantri Medhavi Chhatra Yojana (MMVY) scholarship verification open in Fees & Scholarships Hub!"
       ],
@@ -391,6 +532,7 @@
         }
       ],
 
+      // Official Weekly Timetable (Monday – Friday)
       timetable: {
         Monday: [
           { time: "10:00 AM - 11:00 AM", code: "33261102", subject: "Computer Programming", room: "M003", faculty: "Dr. Abhishek Sharma (AS)", type: "Theory" },
@@ -400,9 +542,9 @@
           { time: "02:00 PM - 04:00 PM", code: "33261106(B)", subject: "Computer Programming Lab (Batch B – 40 Students)", room: "M005", faculty: "Dr. Abhishek Sharma (AS) / Mr. Vinay Gupta (VG)", type: "Lab", batch: "Batch B" }
         ],
         Tuesday: [
-          { time: "10:00 AM - 11:00 AM", code: "33261105", subject: "Linear Algebra and Calculus", room: "M003", faculty: "Dr. Nidhi Humnekar (NH)", type: "Theory", status: "Completed" },
-          { time: "11:00 AM - 12:00 Noon", code: "33261104", subject: "Digital Logic Design", room: "M003", faculty: "Dr. Aftab Ahmed Ansari (AAA)", type: "Theory", status: "Completed" },
-          { time: "12:00 Noon - 01:00 PM", code: "33261101", subject: "Introduction to Electrical and Computer Engineering (+ Live Quiz)", room: "M003", faculty: "Dr. Saurabh Kumar Rajput (SKR)", type: "Theory", status: "Ongoing" },
+          { time: "10:00 AM - 11:00 AM", code: "33261105", subject: "Linear Algebra and Calculus", room: "M003", faculty: "Dr. Nidhi Humnekar (NH)", type: "Theory" },
+          { time: "11:00 AM - 12:00 Noon", code: "33261104", subject: "Digital Logic Design", room: "M003", faculty: "Dr. Aftab Ahmed Ansari (AAA)", type: "Theory" },
+          { time: "12:00 Noon - 01:00 PM", code: "33261101", subject: "Introduction to Electrical and Computer Engineering (+ Live Quiz)", room: "M003", faculty: "Dr. Saurabh Kumar Rajput (SKR)", type: "Theory" },
           { time: "01:00 PM Onwards", code: "BREAK", subject: "Break for Entire Day (No Afternoon Classes)", room: "—", faculty: "—", type: "Break" }
         ],
         Wednesday: [
@@ -417,7 +559,7 @@
           { time: "09:00 AM - 11:00 AM", code: "33261106(A)", subject: "Computer Programming Lab (Batch A – 40 Students)", room: "M005", faculty: "Dr. Abhishek Sharma (AS) / Mr. Vinay Gupta (VG)", type: "Lab", batch: "Batch A" },
           { time: "09:00 AM - 11:00 AM", code: "33261107(B)", subject: "Embedded Programming Lab (Batch B – 40 Students)", room: "M004", faculty: "Dr. Rupam Shrivastava (RUS) / Ms. Akanksha Bhatt (AB)", type: "Lab", batch: "Batch B" },
           { time: "11:00 AM - 12:00 Noon", code: "33261103", subject: "Basics of Embedded Programming", room: "M003", faculty: "Dr. Rupam Shrivastava (RUS)", type: "Theory" },
-          { time: "12:00 Noon - 01:00 PM", code: "33261102", subject: "Computer Programming", room: "M003", faculty: "Dr. Abhishek Sharma (AS)", type: "Theory" },
+          { time: "12:00 Noon - 01:00 PM", code: "33261102", subject: "Computer Programming (+ Live Coding Quiz)", room: "M003", faculty: "Dr. Abhishek Sharma (AS)", type: "Theory" },
           { time: "01:00 PM - 02:00 PM", code: "LUNCH", subject: "Lunch Break", room: "CIOT Block", faculty: "—", type: "Break" }
         ],
         Friday: [
@@ -562,10 +704,11 @@
         { roll: "BTEC26O1076", name: "Yashvardhan Singh", batch: "Batch B", present: false }
       ],
 
+      // 4 Complete, Subject-Specific EACE 1st Sem Quizzes (3 LIVE + 1 Completed)
       quizzes: [
         {
           id: "QZ-33261101-4",
-          title: "In-Class Live Quiz #4: Intro to ECE & Circuit Fundamentals",
+          title: "In-Class Live Quiz #4: Circuit Fundamentals & Semiconductors",
           courseCode: "33261101",
           courseName: "Introduction to Electrical and Computer Engineering",
           faculty: "Dr. Saurabh Kumar Rajput (SKR)",
@@ -619,6 +762,145 @@
               ]
             }
           ]
+        },
+        {
+          id: "QZ-33261102-3",
+          title: "Live Coding Quiz #3: C Pointers, Arrays & Memory Management",
+          courseCode: "33261102",
+          courseName: "Computer Programming",
+          faculty: "Dr. Abhishek Sharma (AS)",
+          durationMins: 12,
+          totalMarks: 12,
+          status: "not_started",
+          strikes: 0,
+          timeLeft: 720,
+          score: 0,
+          grade: "A+",
+          percentile: "95.0%ile",
+          answers: { q1: null, q2: [], q3: "", q4: { A: "", B: "", C: "" } },
+          questions: [
+            {
+              id: 1,
+              type: "mcq",
+              points: 2,
+              text: "Which C standard library function allocates dynamic heap memory AND initializes all allocated bytes to zero?",
+              options: ["malloc()", "calloc()", "realloc()", "alloc_zero()"],
+              correctIndex: 1
+            },
+            {
+              id: 2,
+              type: "checkbox",
+              points: 4,
+              text: "Given `int arr[4] = {10, 20, 30, 40}; int *p = arr;`, select all expressions that evaluate to 30:",
+              options: ["*(p + 2)", "arr[2]", "*(arr + 3)", "p[2]"],
+              correctIndices: [0, 1, 3]
+            },
+            {
+              id: 3,
+              type: "integer",
+              points: 3,
+              text: "If `int a = 5; int *ptr = &a; *ptr = (*ptr) * 4 + 2;`, what is the final integer value stored in `a`?",
+              correct: 22
+            },
+            {
+              id: 4,
+              type: "match",
+              points: 3,
+              text: "Match the C storage class / memory segment with its lifetime & scope:",
+              left: [
+                { key: "A", label: "auto (Local Variable)", match: "Stored on Stack; destroyed when block exits" },
+                { key: "B", label: "static Local Variable", match: "Stored in Data Segment; retains value across function calls" },
+                { key: "C", label: "malloc() Allocation", match: "Stored on Heap; persists until free() is called" }
+              ],
+              rightOptions: [
+                "Stored on Stack; destroyed when block exits",
+                "Stored in Data Segment; retains value across function calls",
+                "Stored on Heap; persists until free() is called"
+              ]
+            }
+          ]
+        },
+        {
+          id: "QZ-33261104-2",
+          title: "Quick Assessment #2: Boolean Algebra, K-Maps & Flip-Flops",
+          courseCode: "33261104",
+          courseName: "Digital Logic Design",
+          faculty: "Dr. Aftab Ahmed Ansari (AAA)",
+          durationMins: 8,
+          totalMarks: 9,
+          status: "not_started",
+          strikes: 0,
+          timeLeft: 480,
+          score: 0,
+          grade: "A+",
+          percentile: "93.8%ile",
+          answers: { q1: null, q2: [], q3: "" },
+          questions: [
+            {
+              id: 1,
+              type: "mcq",
+              points: 3,
+              text: "Which pair of logic gates are universally complete (able to implement any Boolean function alone)?",
+              options: ["AND & OR", "NAND & NOR", "XOR & XNOR", "NOT & AND"],
+              correctIndex: 1
+            },
+            {
+              id: 2,
+              type: "checkbox",
+              points: 3,
+              text: "Select all valid grouping sizes permitted when simplifying a 4-variable Karnaugh Map (K-Map):",
+              options: ["Octet (8 cells)", "Sextet (6 cells)", "Quad (4 cells)", "Pair (2 cells)"],
+              correctIndices: [0, 2, 3]
+            },
+            {
+              id: 3,
+              type: "integer",
+              points: 3,
+              text: "How many JK Flip-Flops are required to construct a MOD-16 asynchronous ripple counter?",
+              correct: 4
+            }
+          ]
+        },
+        {
+          id: "QZ-33261103-1",
+          title: "Weekly Check #1: GPIO Registers, Timers & UART/I2C",
+          courseCode: "33261103",
+          courseName: "Basics of Embedded Programming",
+          faculty: "Dr. Rupam Shrivastava (RUS)",
+          durationMins: 10,
+          totalMarks: 10,
+          status: "submitted",
+          strikes: 0,
+          timeLeft: 0,
+          score: 9,
+          grade: "A+",
+          percentile: "96.2%ile (Top 4 of 80)",
+          answers: { q1: 1, q2: [0, 2], q3: "2" },
+          questions: [
+            {
+              id: 1,
+              type: "mcq",
+              points: 3,
+              text: "Which serial communication protocol uses two open-drain lines (SDA and SCL) with 7-bit or 10-bit device addressing?",
+              options: ["SPI", "I2C (Inter-Integrated Circuit)", "UART", "CAN Bus"],
+              correctIndex: 1
+            },
+            {
+              id: 2,
+              type: "checkbox",
+              points: 4,
+              text: "Select valid hardware timer applications in microcontroller firmware:",
+              options: ["PWM duty-cycle generation", "Analog voltage amplification", "Periodic ISR sensor sampling"],
+              correctIndices: [0, 2]
+            },
+            {
+              id: 3,
+              type: "integer",
+              points: 3,
+              text: "How many data wires (excluding GND) are used in standard full-duplex UART communication (TX & RX)?",
+              correct: 2
+            }
+          ]
         }
       ],
 
@@ -644,9 +926,12 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return structuredClone(DEFAULT_STATE);
         const parsed = JSON.parse(raw);
+        const live = getLiveDateInfo();
         return {
           ...structuredClone(DEFAULT_STATE),
           ...parsed,
+          // Always sync selectedDay on fresh load to today's actual live weekday!
+          selectedDay: live.academicDay,
           studentProfile: { ...DEFAULT_STATE.studentProfile, ...(parsed.studentProfile || {}) },
           facultyProfile: { ...DEFAULT_STATE.facultyProfile, ...(parsed.facultyProfile || {}) },
           clubProfile: { ...DEFAULT_STATE.clubProfile, ...(parsed.clubProfile || {}) },
@@ -667,7 +952,6 @@
           studentTab: state.studentTab,
           facultyTab: state.facultyTab,
           clubTab: state.clubTab,
-          selectedDay: state.selectedDay,
           selectedBatch: state.selectedBatch,
           selectedCourseCode: state.selectedCourseCode,
           clubCategoryFilter: state.clubCategoryFilter,
@@ -676,6 +960,7 @@
           facultyCohortMode: state.facultyCohortMode,
           facultyMarksTier: state.facultyMarksTier,
           activeQuizIndex: state.activeQuizIndex,
+          notices: state.notices,
           announcements: state.announcements,
           studentProfile: state.studentProfile,
           facultyProfile: state.facultyProfile,
@@ -696,8 +981,28 @@
     }
 
     let quizInterval = null;
+    let liveClockInterval = null;
     let gradingChartInstance = null;
 
+    /*************************************************************************
+     * REAL-TIME TICKING CLOCK UPDATER (Updates DOM every second smoothly)
+     *************************************************************************/
+    function startLiveClockEngine() {
+      if (liveClockInterval) clearInterval(liveClockInterval);
+      liveClockInterval = setInterval(() => {
+        const info = getLiveDateInfo();
+        document.querySelectorAll('.live-date-text').forEach(el => {
+          el.textContent = info.formattedDate;
+        });
+        document.querySelectorAll('.live-clock-text').forEach(el => {
+          el.textContent = info.formattedTime;
+        });
+      }, 1000);
+    }
+
+    /*************************************************************************
+     * UTILITY & ATTENDANCE ENGINE FUNCTIONS
+     *************************************************************************/
     function showToast(message, type = 'info') {
       const container = document.getElementById('toast-container');
       if (!container) return;
@@ -741,6 +1046,107 @@
       const backdrop = document.getElementById('modal-backdrop');
       backdrop.classList.add('hidden');
       backdrop.classList.remove('flex');
+    }
+
+    /**
+     * Interactive All-Notices Modal / Drawer (Triggered from Notification Bar near Date)
+     */
+    function openAllNoticesModal() {
+      const categories = ['All', 'Academic', 'Quiz', 'Exams', 'Scholarship', 'Events'];
+      const unreadCount = state.notices.filter(n => n.unread).length;
+      const filtered = state.noticeFilterCategory === 'All'
+        ? state.notices
+        : state.notices.filter(n => n.category === state.noticeFilterCategory);
+
+      const catBadgeColors = {
+        Academic: 'bg-indigo-100 text-indigo-800',
+        Quiz: 'bg-amber-100 text-amber-900',
+        Exams: 'bg-rose-100 text-rose-800',
+        Scholarship: 'bg-emerald-100 text-emerald-800',
+        Events: 'bg-purple-100 text-purple-800'
+      };
+
+      openModal(`
+        <div class="flex flex-col max-h-[85vh]">
+          <div class="bg-gradient-to-r from-mits-navy via-mits-royal to-indigo-900 p-5 text-white flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-amber-400 text-mits-navy flex items-center justify-center text-lg shadow">
+                <i class="fa-solid fa-bell"></i>
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="text-base sm:text-lg font-extrabold">CIOT & University Notices Hub</h3>
+                  <span class="px-2 py-0.5 rounded-full bg-amber-400 text-mits-navy text-[11px] font-extrabold">${unreadCount} New</span>
+                </div>
+                <p class="text-xs text-slate-300">All circulars, live quizzes, exam updates & club notices in one place</p>
+              </div>
+            </div>
+            <button onclick="closeModal()" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap gap-1.5">
+              ${categories.map(cat => `
+                <button onclick="state.noticeFilterCategory='${cat}'; openAllNoticesModal();"
+                  class="px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${state.noticeFilterCategory === cat ? 'bg-mits-navy text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}">
+                  ${cat}
+                </button>
+              `).join('')}
+            </div>
+            ${unreadCount > 0 ? `
+              <button onclick="markAllNoticesRead()" class="text-xs font-bold text-indigo-700 hover:text-indigo-950 cursor-pointer">
+                <i class="fa-solid fa-check-double mr-1"></i>Mark All Read
+              </button>
+            ` : `<span class="text-[11px] text-emerald-700 font-semibold"><i class="fa-solid fa-check mr-1"></i>All caught up</span>`}
+          </div>
+
+          <div class="p-5 overflow-y-auto space-y-3 flex-1">
+            ${filtered.length === 0 ? `<p class="text-xs text-slate-400 text-center py-6">No notices under "${state.noticeFilterCategory}" category.</p>` : ''}
+            ${filtered.map(n => `
+              <div onclick="toggleNoticeRead('${n.id}')"
+                class="p-4 rounded-2xl border ${n.unread ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white'} hover:border-indigo-300 transition cursor-pointer space-y-1.5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    ${n.unread ? `<span class="w-2.5 h-2.5 rounded-full bg-rose-600 shrink-0" title="Unread"></span>` : ''}
+                    <span class="px-2.5 py-0.5 rounded-md text-[11px] font-bold ${catBadgeColors[n.category] || 'bg-slate-100 text-slate-700'}">${n.category}</span>
+                    <span class="text-[11px] font-mono text-slate-400">${n.date}</span>
+                  </div>
+                  <span class="text-[11px] font-semibold text-slate-500">${n.issuedBy}</span>
+                </div>
+                <h4 class="font-extrabold text-slate-900 text-sm">${n.title}</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">${n.body}</p>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+            <span class="text-[11px] text-slate-500">Synced with MITS SAMS ERP • ${state.notices.length} Total Notices</span>
+            <button onclick="closeModal()" class="px-4 py-2 rounded-xl bg-mits-navy text-white text-xs font-bold hover:bg-slate-800 cursor-pointer">
+              Close Notices
+            </button>
+          </div>
+        </div>
+      `);
+    }
+
+    function markAllNoticesRead() {
+      state.notices.forEach(n => n.unread = false);
+      saveState();
+      render();
+      openAllNoticesModal();
+      showToast("All notifications marked as read.", "success");
+    }
+
+    function toggleNoticeRead(id) {
+      const item = state.notices.find(n => n.id === id);
+      if (item && item.unread) {
+        item.unread = false;
+        saveState();
+        render();
+        openAllNoticesModal();
+      }
     }
 
     function getAttendanceStats(course) {
@@ -787,7 +1193,13 @@
       `;
     }
 
+    /*************************************************************************
+     * PORTAL SWITCHING & LOGIN HANDLERS
+     *************************************************************************/
     function loginAs(portal) {
+      const live = getLiveDateInfo();
+      state.selectedDay = live.academicDay;
+
       if (portal === 'student') {
         const idVal = document.getElementById('student-id-input')?.value?.trim();
         if (idVal) {
@@ -838,23 +1250,31 @@
       showToast("Signed out of SAMS session.", "info");
     }
 
+    /*************************************************************************
+     * 1. LANDING PAGE & 3 LOGIN GATEWAYS
+     *************************************************************************/
     function renderLandingPage() {
+      const live = getLiveDateInfo();
       return `
+        <!-- Top University Institutional Strip with Live Date & Clock -->
         <div class="bg-mits-navy text-slate-200 text-xs py-2 px-4 border-b border-amber-500/30">
           <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2">
-              <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-extrabold">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> LIVE
+              </span>
               <span class="font-medium text-amber-300">Academic Session: July – Dec 2026 (w.e.f. 24.08.2026)</span>
-              <span class="hidden sm:inline text-slate-400">|</span>
-              <span class="hidden sm:inline">NAAC Accredited with A++ Grade • Deemed University</span>
+              <span class="hidden md:inline text-slate-400">|</span>
+              <span class="hidden md:inline">NAAC Accredited with A++ Grade • Deemed University</span>
             </div>
-            <div class="flex items-center gap-4 font-mono text-[11px]">
-              <span><i class="fa-regular fa-calendar mr-1 text-amber-400"></i>${CURRENT_DATE_STR}</span>
-              <span class="hidden md:inline text-amber-300">CIOT Block (M003–M005)</span>
+            <div class="flex items-center gap-3 font-mono text-[11px]">
+              <span><i class="fa-regular fa-calendar mr-1 text-amber-400"></i><span class="live-date-text">${live.formattedDate}</span></span>
+              <span class="text-emerald-300 font-bold bg-white/10 px-2 py-0.5 rounded"><i class="fa-regular fa-clock mr-1 text-amber-400"></i><span class="live-clock-text">${live.formattedTime}</span></span>
             </div>
           </div>
         </div>
 
+        <!-- Live Campus Announcements Ticker -->
         <div class="bg-amber-50 border-b border-amber-200 py-2 overflow-hidden flex items-center">
           <div class="bg-mits-gold text-white text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-r-full shrink-0 z-10 shadow-xs flex items-center gap-1.5">
             <i class="fa-solid fa-bullhorn"></i> CIOT Live Ticker
@@ -867,6 +1287,7 @@
           </div>
         </div>
 
+        <!-- Hero Header -->
         <header class="bg-gradient-to-br from-mits-navy via-mits-royal to-indigo-950 text-white relative overflow-hidden">
           <div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image: radial-gradient(#F59E0B 1px, transparent 1px); background-size: 24px 24px;"></div>
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-14 relative z-10">
@@ -889,13 +1310,14 @@
                 </div>
               </div>
 
+              <!-- Quick University Metrics Box -->
               <div class="grid grid-cols-2 gap-3 w-full lg:w-auto shrink-0">
                 <div class="bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl p-4 text-center">
                   <div class="text-2xl font-extrabold text-amber-400">CIOT</div>
                   <div class="text-xs text-slate-300 mt-0.5">EACE Dept. (80)</div>
                 </div>
                 <div class="bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl p-4 text-center">
-                  <div class="text-2xl font-extrabold text-emerald-400">5-Tier</div>
+                  <div class="text-2xl font-extrabold text-emerald-400">4-Tier</div>
                   <div class="text-xs text-slate-300 mt-0.5">NEP Assessment</div>
                 </div>
                 <div class="bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl p-4 text-center">
@@ -911,9 +1333,11 @@
           </div>
         </header>
 
+        <!-- Three Distinct Login Gateways -->
         <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 pb-16 relative z-20 w-full">
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
+            <!-- GATEWAY 1: STUDENT LOGIN -->
             <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col hover:border-indigo-400 transition-all">
               <div class="bg-gradient-to-r from-indigo-900 to-blue-800 p-5 text-white flex items-center justify-between">
                 <div>
@@ -927,7 +1351,7 @@
               <div class="p-6 flex-1 flex flex-col justify-between space-y-5">
                 <div class="space-y-4">
                   <p class="text-xs text-slate-500 leading-relaxed">
-                    Access 1st Sem EACE dashboard, official timetable, 75% attendance predictor, live anti-cheating quizzes, 5-tier exam scorebook & scholarships.
+                    Access 1st Sem EACE dashboard, live daily timetable, 75% attendance predictor, live anti-cheating quizzes, 4-tier exam scorebook & scholarships.
                   </p>
                   <div>
                     <label class="block text-xs font-semibold text-slate-700 mb-1">Enrollment Number or College Email</label>
@@ -960,6 +1384,7 @@
               </div>
             </div>
 
+            <!-- GATEWAY 2: FACULTY LOGIN -->
             <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col hover:border-amber-500 transition-all">
               <div class="bg-gradient-to-r from-mits-navy to-slate-800 p-5 text-white flex items-center justify-between">
                 <div>
@@ -1006,6 +1431,7 @@
               </div>
             </div>
 
+            <!-- GATEWAY 3: CLUB PORTAL LOGIN -->
             <div class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col hover:border-emerald-500 transition-all">
               <div class="bg-gradient-to-r from-emerald-900 to-teal-800 p-5 text-white flex items-center justify-between">
                 <div>
@@ -1058,6 +1484,7 @@
 
           </div>
 
+          <!-- CIOT Leadership & System Architecture Strip -->
           <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row items-center justify-between gap-6">
             <div class="flex items-center gap-4">
               <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center text-xl shrink-0">
@@ -1080,6 +1507,9 @@
       `;
     }
 
+    /*************************************************************************
+     * 2. STUDENT PORTAL SHELL & ALL MODULES
+     *************************************************************************/
     function setStudentTab(tab) {
       state.studentTab = tab;
       state.sidebarOpen = false;
@@ -1092,9 +1522,11 @@
 
     function renderStudentPortal() {
       const p = state.studentProfile;
+      const live = getLiveDateInfo();
       const aggAtt = getAggregateAttendance();
       const dangerCount = state.courses.filter(c => getAttendanceStats(c).pct < 75).length;
       const unattemptedQuizzes = state.quizzes.filter(q => q.status === 'not_started').length;
+      const unreadNoticesCount = state.notices.filter(n => n.unread).length;
 
       const navItems = [
         { id: 'dashboard', label: 'Dashboard & Schedule', icon: 'fa-gauge-high' },
@@ -1112,6 +1544,7 @@
         <div class="min-h-screen flex bg-slate-100">
           ${state.sidebarOpen ? `<div onclick="state.sidebarOpen=false; render();" class="fixed inset-0 bg-slate-900/50 z-30 lg:hidden"></div>` : ''}
 
+          <!-- Sidebar -->
           <aside class="fixed lg:sticky top-0 left-0 z-40 h-screen w-72 bg-mits-navy text-white flex flex-col transition-transform duration-300 ${state.sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} shrink-0 shadow-2xl">
             <div class="p-4 border-b border-white/10 flex items-center justify-between">
               <div class="flex items-center gap-3">
@@ -1126,6 +1559,7 @@
               </button>
             </div>
 
+            <!-- Mini Student Badge -->
             <div onclick="setStudentTab('profile')" class="p-4 bg-white/5 hover:bg-white/10 border-b border-white/10 cursor-pointer transition">
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 text-mits-navy font-extrabold flex items-center justify-center text-sm shadow">
@@ -1139,6 +1573,7 @@
               </div>
             </div>
 
+            <!-- Navigation Links -->
             <nav class="flex-1 overflow-y-auto p-3 space-y-1">
               ${navItems.map(item => {
                 const active = state.studentTab === item.id;
@@ -1155,6 +1590,7 @@
               }).join('')}
             </nav>
 
+            <!-- Switch Portal / Logout Footer -->
             <div class="p-3 border-t border-white/10">
               <button onclick="logoutToLanding()"
                 class="w-full py-2.5 px-3 rounded-xl bg-white/10 hover:bg-rose-600 text-white text-xs font-semibold transition flex items-center justify-center gap-2 cursor-pointer">
@@ -1163,37 +1599,61 @@
             </div>
           </aside>
 
+          <!-- Main Content Column -->
           <div class="flex-1 flex flex-col min-w-0">
-            <header class="sticky top-0 z-20 bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 shadow-2xs">
+            <header class="sticky top-0 z-20 bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
               <div class="flex items-center gap-3">
                 <button onclick="state.sidebarOpen=true; render();" class="lg:hidden p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200">
                   <i class="fa-solid fa-bars"></i>
                 </button>
                 <div>
-                  <h1 class="text-sm sm:text-base font-bold text-slate-900">
-                    ${navItems.find(n => n.id === state.studentTab)?.label || 'Student Dashboard'}
-                  </h1>
+                  <div class="flex items-center gap-2">
+                    <h1 class="text-sm sm:text-base font-bold text-slate-900">
+                      ${navItems.find(n => n.id === state.studentTab)?.label || 'Student Dashboard'}
+                    </h1>
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping"></span> LIVE
+                    </span>
+                  </div>
                   <p class="text-[11px] text-slate-500 hidden sm:block">
                     Madhav Institute of Technology & Science, Gwalior • Session: July – Dec 2026
                   </p>
                 </div>
               </div>
 
-              <div class="flex items-center gap-2 sm:gap-3">
-                ${unattemptedQuizzes > 0 ? `
-                  <button onclick="setStudentTab('quiz')" class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-bold transition cursor-pointer">
-                    <span class="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
-                    ${unattemptedQuizzes} Live Quiz Active!
-                  </button>
-                ` : ''}
-                <div class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-mono font-medium">
-                  <i class="fa-regular fa-calendar text-indigo-600 mr-1.5"></i>${CURRENT_DATE_STR}
+              <!-- Right Header Controls: Interactive Notification Bar + Live Date & Clock Pill -->
+              <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                <!-- Interactive Notification Bar Button right beside Date -->
+                <button onclick="openAllNoticesModal()"
+                  class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 text-xs font-bold transition cursor-pointer shadow-2xs"
+                  title="Click to view all CIOT & University Notices">
+                  <span class="relative flex items-center justify-center">
+                    <i class="fa-solid fa-bell text-amber-600 text-sm"></i>
+                    ${unreadNoticesCount > 0 ? `<span class="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>` : ''}
+                  </span>
+                  <span>Notices</span>
+                  <span class="px-2 py-0.5 rounded-full ${unreadNoticesCount > 0 ? 'bg-rose-600 text-white' : 'bg-slate-200 text-slate-700'} text-[10px] font-extrabold">
+                    ${unreadNoticesCount > 0 ? `${unreadNoticesCount} New` : `${state.notices.length}`}
+                  </span>
+                </button>
+
+                <!-- Real-Time Live Date & Ticking Clock Pill -->
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-mono font-medium shadow-2xs">
+                  <i class="fa-regular fa-calendar text-amber-400"></i>
+                  <span class="live-date-text hidden md:inline">${live.formattedDate}</span>
+                  <span class="md:hidden">${live.actualDayName}</span>
+                  <span class="text-slate-500">|</span>
+                  <i class="fa-regular fa-clock text-emerald-400"></i>
+                  <span class="live-clock-text text-emerald-300 font-bold">${live.formattedTime}</span>
                 </div>
               </div>
             </header>
 
+            <!-- Live Ticker Strip -->
             <div class="bg-mits-royal text-white text-xs py-1.5 px-4 overflow-hidden flex items-center">
-              <span class="bg-amber-500 text-mits-navy font-extrabold text-[10px] px-2 py-0.5 rounded uppercase mr-3 shrink-0">Notice</span>
+              <button onclick="openAllNoticesModal()" class="bg-amber-500 hover:bg-amber-400 text-mits-navy font-extrabold text-[10px] px-2.5 py-0.5 rounded uppercase mr-3 shrink-0 cursor-pointer transition">
+                All Notices (${state.notices.length}) →
+              </button>
               <div class="overflow-hidden flex-1">
                 <div class="animate-ticker space-x-10 text-slate-200">
                   ${state.announcements.map(a => `<span>${a}</span>`).join('')}
@@ -1201,6 +1661,7 @@
               </div>
             </div>
 
+            <!-- Active Student Tab Content -->
             <main class="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-6">
               ${renderStudentTabContent(aggAtt)}
             </main>
@@ -1224,14 +1685,41 @@
       }
     }
 
+    /* ---------------- MODULE A: DASHBOARD & DAILY SCHEDULE ---------------- */
     function renderStudentDashboard(aggAtt) {
       const p = state.studentProfile;
+      const live = getLiveDateInfo();
       const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
       const rawDaySchedule = state.timetable[state.selectedDay] || [];
       const daySchedule = rawDaySchedule.filter(slot => !slot.batch || slot.batch === state.selectedBatch);
       const unattemptedQuizzes = state.quizzes.filter(q => q.status === 'not_started').length;
+      const unreadNoticesCount = state.notices.filter(n => n.unread).length;
+      const latestNotice = state.notices[0];
 
       return `
+        <!-- Compact Interactive Notification Bar on First Page (Mirrors Top Notification Pill) -->
+        <div onclick="openAllNoticesModal()"
+          class="bg-white hover:bg-amber-50/40 rounded-2xl border border-amber-300 p-3.5 sm:px-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition group">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+              <i class="fa-solid fa-bell"></i>
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-amber-800">Departmental Notice Board</span>
+                <span class="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold">${unreadNoticesCount} Unread / ${state.notices.length} Total</span>
+              </div>
+              <p class="text-xs font-semibold text-slate-800 truncate mt-0.5">
+                ${latestNotice ? `${latestNotice.title} — ${latestNotice.body}` : 'Tap to view all MITS Gwalior CIOT notices and circulars'}
+              </p>
+            </div>
+          </div>
+          <span class="px-3.5 py-1.5 rounded-xl bg-mits-navy group-hover:bg-indigo-900 text-white text-xs font-bold shrink-0 self-start sm:self-center">
+            View All Notices <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+          </span>
+        </div>
+
+        <!-- Top Profile & Department Leadership Grid -->
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div class="xl:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between">
             <div class="bg-gradient-to-r from-mits-navy via-mits-royal to-indigo-900 px-6 py-4 text-white flex flex-wrap items-center justify-between gap-2">
@@ -1264,6 +1752,7 @@
             </div>
           </div>
 
+          <!-- Department Leadership Card -->
           <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
             <div>
               <div class="flex items-center justify-between mb-3">
@@ -1290,6 +1779,7 @@
           </div>
         </div>
 
+        <!-- Academic KPI Summary Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div onclick="setStudentTab('attendance')" class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:border-indigo-400 transition cursor-pointer">
             <div class="flex items-center justify-between">
@@ -1307,9 +1797,9 @@
               <span class="text-xs font-semibold text-amber-800">In-Class Live Quizzes</span>
               <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center"><i class="fa-solid fa-stopwatch"></i></span>
             </div>
-            <div class="text-2xl font-extrabold text-slate-900 mt-2">${unattemptedQuizzes > 0 ? `${unattemptedQuizzes} Active` : 'All Completed'}</div>
+            <div class="text-2xl font-extrabold text-slate-900 mt-2">${unattemptedQuizzes > 0 ? `${unattemptedQuizzes} Live Now` : 'All Completed'}</div>
             <div class="text-xs text-amber-700 font-semibold mt-1">
-              ${unattemptedQuizzes > 0 ? 'Tap to Launch Proctored Quiz →' : 'View Relative Grades →'}
+              ${unattemptedQuizzes > 0 ? 'Tap to Launch Proctored Quizzes →' : 'View Relative Grades →'}
             </div>
           </div>
 
@@ -1325,6 +1815,7 @@
           </div>
         </div>
 
+        <!-- Official Weekly Timetable (Automatically synced to current live weekday!) -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <div class="p-5 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
@@ -1332,7 +1823,19 @@
                 <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-xs font-bold">
                   <i class="fa-solid fa-calendar-day mr-1"></i> Official Time Table (w.e.f. 24.08.2026)
                 </span>
-                <span class="text-xs text-slate-500 font-medium">B.Tech. EACE • I Year / I Sem</span>
+                ${live.isWeekend ? `
+                  <span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-xs font-bold">
+                    Weekend (${live.actualDayName}) • Showing Monday
+                  </span>
+                ` : state.selectedDay === live.actualDayName ? `
+                  <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                    ● Today's Live Schedule (${live.actualDayName})
+                  </span>
+                ` : `
+                  <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
+                    Today is ${live.actualDayName}
+                  </span>
+                `}
               </div>
               <h3 class="text-base font-bold text-slate-900 mt-1">
                 ${state.selectedDay} Class & Lab Schedule (${state.selectedBatch})
@@ -1340,6 +1843,7 @@
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
+              <!-- Batch A / Batch B Lab Switcher -->
               <div class="flex items-center bg-amber-50 border border-amber-200 p-1 rounded-xl" title="Theory lectures are common for all 80 EACE students; Labs split into Batch A (40) & Batch B (40)">
                 <button onclick="state.selectedBatch='Batch A'; render();"
                   class="px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${state.selectedBatch === 'Batch A' ? 'bg-amber-500 text-mits-navy shadow-2xs' : 'text-amber-900 hover:bg-amber-100'}">
@@ -1351,13 +1855,17 @@
                 </button>
               </div>
 
+              <!-- Day Switcher Tabs -->
               <div class="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-xl">
-                ${days.map(d => `
-                  <button onclick="state.selectedDay='${d}'; render();"
-                    class="px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${state.selectedDay === d ? 'bg-mits-navy text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
-                    ${d.slice(0, 3)}${d === 'Tuesday' ? ' •' : ''}
-                  </button>
-                `).join('')}
+                ${days.map(d => {
+                  const isToday = d === live.academicDay;
+                  return `
+                    <button onclick="state.selectedDay='${d}'; render();"
+                      class="px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${state.selectedDay === d ? 'bg-mits-navy text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                      ${d.slice(0, 3)}${isToday ? ' •' : ''}
+                    </button>
+                  `;
+                }).join('')}
               </div>
             </div>
           </div>
@@ -1374,7 +1882,9 @@
                   </div>
                 `;
               }
-              const isOngoing = state.selectedDay === 'Tuesday' && slot.status === 'Ongoing';
+              const liveStatus = getSlotLiveStatus(slot.time, state.selectedDay);
+              const isLiveNow = liveStatus === 'LIVE NOW';
+              const isCompleted = liveStatus === 'COMPLETED';
               const badgeStyle = slot.type === 'Lab'
                 ? 'bg-purple-100 text-purple-800'
                 : slot.type === 'Project'
@@ -1384,12 +1894,14 @@
                 : 'bg-slate-200 text-slate-700';
 
               return `
-                <div class="p-4 rounded-2xl border ${isOngoing ? 'border-amber-400 bg-amber-50/50 ring-2 ring-amber-400/20' : 'border-slate-200 bg-slate-50/50'} flex items-start justify-between gap-4">
+                <div class="p-4 rounded-2xl border ${isLiveNow ? 'border-amber-400 bg-amber-50/60 ring-2 ring-amber-400/30' : isCompleted ? 'border-slate-200 bg-slate-50/30 opacity-85' : 'border-slate-200 bg-slate-50/50'} flex items-start justify-between gap-4">
                   <div class="space-y-1.5">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="text-xs font-mono font-bold text-indigo-900 bg-indigo-100 px-2.5 py-0.5 rounded-lg">${slot.time}</span>
                       <span class="text-xs font-bold px-2 py-0.5 rounded-lg ${badgeStyle}">${slot.type}</span>
-                      ${isOngoing ? `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-mits-navy animate-pulse">● ACTIVE SLOT</span>` : ''}
+                      ${isLiveNow ? `<span class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-500 text-mits-navy animate-pulse">● LIVE NOW</span>` : ''}
+                      ${isCompleted ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">✓ Completed</span>` : ''}
+                      ${liveStatus === 'UPCOMING' ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">Upcoming</span>` : ''}
                     </div>
                     <div class="font-bold text-slate-900 text-sm">${slot.subject}</div>
                     <div class="text-xs text-slate-600 flex flex-wrap items-center gap-3">
@@ -1406,6 +1918,7 @@
       `;
     }
 
+    /* ---------------- MY PROFILE VIEW ---------------- */
     function renderStudentProfileView() {
       const p = state.studentProfile;
       return `
@@ -1478,6 +1991,7 @@
       `;
     }
 
+    /* ---------------- MODULE B: SMART ATTENDANCE TRACKING (75% ENGINE) ---------------- */
     function adjustSimAttendance(code, dAtt, dTot) {
       const c = state.courses.find(x => x.code === code);
       if (!c) return;
@@ -1584,6 +2098,7 @@
       `;
     }
 
+    /* ---------------- MODULE C: COURSE SYLLABUS & STUDY MATERIALS ---------------- */
     function previewStudyMaterial(title, courseName, unitNum, type, by, date) {
       openModal(`
         <div class="p-6">
@@ -1701,8 +2216,23 @@
       `;
     }
 
+    /* ---------------- MODULE D: LIVE IN-CLASS QUIZZES & ANTI-CHEATING ---------------- */
     function getActiveQuiz() {
       return state.quizzes[state.activeQuizIndex] || state.quizzes[0];
+    }
+
+    function selectQuizIndex(idx) {
+      const current = getActiveQuiz();
+      if (current && current.status === 'in_progress') {
+        showToast("Finish or submit your active proctored quiz before switching!", "warning");
+        return;
+      }
+      state.activeQuizIndex = idx;
+      render();
+      const next = getActiveQuiz();
+      if (next && next.status === 'submitted') {
+        setTimeout(renderGradingBellCurve, 60);
+      }
     }
 
     function startLiveQuiz() {
@@ -1897,18 +2427,52 @@
     function renderStudentQuiz() {
       const qz = getActiveQuiz();
       if (!qz) return "";
+      const liveCount = state.quizzes.filter(q => q.status === 'not_started').length;
+      const doneCount = state.quizzes.filter(q => q.status === 'submitted').length;
 
-      const quizSelectorHeader = state.quizzes.length > 1 ? `
-        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs flex flex-wrap items-center justify-between gap-3 mb-5">
-          <span class="text-xs font-bold text-slate-700"><i class="fa-solid fa-layer-group text-indigo-600 mr-1.5"></i>Available Faculty Quizzes (${state.quizzes.length}):</span>
-          <div class="flex flex-wrap gap-2">
-            ${state.quizzes.map((item, idx) => `
-              <button onclick="state.activeQuizIndex=${idx}; render(); if(state.quizzes[${idx}].status==='submitted') setTimeout(renderGradingBellCurve,50);"
-                class="px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer border ${state.activeQuizIndex === idx ? 'bg-mits-navy text-white border-mits-navy' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}">
-                ${item.courseCode}: ${item.title.slice(0, 28)}...
-                <span class="ml-1 px-1.5 py-0.2 rounded text-[10px] ${item.status === 'submitted' ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-mits-navy'}">${item.status === 'submitted' ? 'Done' : 'LIVE'}</span>
-              </button>
-            `).join('')}
+      // Prominent Quiz Cards Hub Selector
+      const quizSelectorHeader = qz.status !== 'in_progress' ? `
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4 mb-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 class="text-lg font-extrabold text-slate-900">Live In-Class Quizzes & Weekly Assessments</h2>
+              <p class="text-xs text-slate-500">Select any subject assessment below to attempt under Fullscreen DND Proctoring or inspect relative grading results.</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs font-bold shrink-0">
+              <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900">${liveCount} Live Now</span>
+              <span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">${doneCount} Completed</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            ${state.quizzes.map((item, idx) => {
+              const isSelected = state.activeQuizIndex === idx;
+              const isDone = item.status === 'submitted';
+              const isTerm = item.status === 'terminated';
+              return `
+                <div onclick="selectQuizIndex(${idx})"
+                  class="p-4 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between space-y-2.5 ${isSelected ? 'border-mits-navy bg-indigo-50/50 shadow-sm' : 'border-slate-200 bg-slate-50/50 hover:border-indigo-300 hover:bg-white'}">
+                  <div class="space-y-1.5">
+                    <div class="flex items-center justify-between gap-1">
+                      <span class="font-mono text-[11px] font-extrabold text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded">${item.courseCode}</span>
+                      ${isDone ? `
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold">✓ ${item.score}/${item.totalMarks} (${item.grade})</span>
+                      ` : isTerm ? `
+                        <span class="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-extrabold">LOCKED</span>
+                      ` : `
+                        <span class="px-2 py-0.5 rounded-full bg-amber-400 text-mits-navy text-[10px] font-extrabold animate-pulse">● LIVE NOW</span>
+                      `}
+                    </div>
+                    <h4 class="font-bold text-slate-900 text-xs leading-snug line-clamp-2">${item.title}</h4>
+                    <p class="text-[11px] text-slate-500 truncate">${item.faculty}</p>
+                  </div>
+                  <div class="pt-2 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-mono text-slate-600">
+                    <span><i class="fa-regular fa-clock mr-1"></i>${item.durationMins}m</span>
+                    <span>${item.questions.length} Qs • ${item.totalMarks} Pts</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
           </div>
         </div>
       ` : '';
@@ -2151,6 +2715,7 @@
       `;
     }
 
+    /* ---------------- MODULE E: 4-TIER EXAM SCOREBOOK & SCHEDULE ---------------- */
     function renderStudentExams() {
       const theoryCourses = state.courses.filter(c => c.type === 'Theory');
       const labCourses = state.courses.filter(c => c.type === 'Lab');
@@ -2309,6 +2874,7 @@
       `;
     }
 
+    /* ---------------- MODULE F: MICRO-PROJECT-I & SEMESTER PROFICIENCY ---------------- */
     function uploadMilestoneDeliverable(milestoneId) {
       const m = state.microProject.milestones.find(x => x.id === milestoneId);
       if (!m) return;
@@ -2407,6 +2973,7 @@
             </div>
           </div>
 
+          <!-- Semester Proficiency Presentation Portal (33261108) -->
           <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200">
               <div>
@@ -2442,6 +3009,7 @@
       `;
     }
 
+    /* ---------------- MODULE G: FEES, SCHOLARSHIPS, BONAFIDE & HELP DESK ---------------- */
     function openFeeReceiptModal(title, amount, txnId, date, breakdown) {
       openModal(`
         <div class="p-6 space-y-4">
@@ -2537,6 +3105,7 @@
 
     function openDocumentGeneratorModal(purpose) {
       const p = state.studentProfile;
+      const live = getLiveDateInfo();
       let heading = "Official Bonafide Certificate (Scholarship Purpose)";
       let refCode = "MITS/CIOT/2026-27/SCH-904";
       let bodyParagraph = `
@@ -2570,7 +3139,7 @@
               ${getMitsCrestSVG("w-10 h-10")}
               <div class="text-left">
                 <div class="font-extrabold text-mits-navy uppercase">Madhav Institute of Technology & Science, Gwalior</div>
-                <div class="text-[11px] text-slate-500">Deemed University • Ref: ${refCode} • Date: ${CURRENT_DATE_STR}</div>
+                <div class="text-[11px] text-slate-500">Deemed University • Ref: ${refCode} • Date: ${live.formattedDate}</div>
               </div>
             </div>
             <p>${bodyParagraph}</p>
@@ -2591,6 +3160,7 @@
 
     function raiseHelpDeskTicket(e) {
       e.preventDefault();
+      const live = getLiveDateInfo();
       const cat = document.getElementById('ticket-category').value;
       const subj = document.getElementById('ticket-subject').value.trim();
       if (!subj) return;
@@ -2598,7 +3168,7 @@
         id: `TKT-2026-${Math.floor(500 + Math.random() * 400)}`,
         category: cat,
         subject: subj,
-        date: "Nov 17, 2026",
+        date: live.formattedDate,
         status: "Open",
         reply: "Assigned to MITS Student Help Desk / Scholarship Nodal Officer. Expected response within 24 hrs."
       });
@@ -2902,6 +3472,7 @@
       `;
     }
 
+    /* ---------------- MODULE H: CLUBS, SOCIETIES & EVENTS FEED ---------------- */
     function registerForCampusEvent(eventId) {
       const evt = state.events.find(e => e.id === eventId);
       if (!evt) return;
@@ -3054,6 +3625,9 @@
       `;
     }
 
+    /*************************************************************************
+     * 3. FACULTY PORTAL
+     *************************************************************************/
     function toggleFacultyStudentAttendance(roll) {
       const stu = state.facultyRoster.find(s => s.roll === roll);
       if (stu) stu.present = !stu.present;
@@ -3156,6 +3730,15 @@
       state.quizzes.unshift(newQuiz);
       state.activeQuizIndex = 0;
       state.announcements.unshift(`⚡ NEW LIVE QUIZ PUBLISHED: "${qTitle}" (${course.code} – ${course.shortName}) by ${state.facultyProfile.name}!`);
+      state.notices.unshift({
+        id: `NTC-${Date.now()}`,
+        category: "Quiz",
+        title: `Live Quiz Published: ${qTitle}`,
+        body: `Course ${course.code} (${course.shortName}) live assessment (${totalPts} Marks, ${qMins} Mins) published by ${state.facultyProfile.name}.`,
+        date: "Just Now",
+        issuedBy: state.facultyProfile.name,
+        unread: true
+      });
       render();
       showToast(`"${qTitle}" published live! Students can now attempt it in Live In-Class Quizzes.`, "success");
     }
@@ -3180,6 +3763,7 @@
 
     function uploadFacultyMaterial(e) {
       e.preventDefault();
+      const live = getLiveDateInfo();
       const code = document.getElementById('fac-mat-course').value;
       const unit = parseInt(document.getElementById('fac-mat-unit').value, 10);
       const type = document.getElementById('fac-mat-type').value;
@@ -3193,7 +3777,7 @@
           title,
           type,
           size: "2.1 MB",
-          date: "Nov 17, 2026",
+          date: live.formattedDate,
           by: state.facultyProfile.name
         });
       }
@@ -3204,6 +3788,7 @@
 
     function renderFacultyPortal() {
       const fp = state.facultyProfile;
+      const live = getLiveDateInfo();
       const filteredRoster = state.facultyRoster.filter(s => {
         if (state.facultyCohortMode === 'batchA') return s.batch === 'Batch A';
         if (state.facultyCohortMode === 'batchB') return s.batch === 'Batch B';
@@ -3219,9 +3804,11 @@
               <div class="flex items-center gap-3.5">
                 ${getMitsCrestSVG("w-11 h-11")}
                 <div>
-                  <div class="flex items-center gap-2">
+                  <div class="flex flex-wrap items-center gap-2">
                     <span class="px-2 py-0.5 rounded bg-amber-400 text-mits-navy text-[10px] font-extrabold uppercase">Faculty ERP</span>
-                    <span class="text-xs text-slate-300 font-mono">${CURRENT_DATE_STR}</span>
+                    <span class="text-xs text-slate-300 font-mono">
+                      <span class="live-date-text">${live.formattedDate}</span> • <span class="live-clock-text text-emerald-300 font-bold">${live.formattedTime}</span>
+                    </span>
                   </div>
                   <h1 class="text-lg font-extrabold mt-0.5">${fp.name}</h1>
                   <p class="text-xs text-amber-300">${fp.designation} • ${fp.department}</p>
@@ -3256,161 +3843,153 @@
               </button>
               <button onclick="state.facultyTab='materials'; render();"
                 class="px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${state.facultyTab === 'materials' ? 'bg-mits-navy text-white' : 'text-slate-600 hover:bg-slate-100'}">
-                <i class="fa-solid fa-file-arrow-up mr-1.5"></i> 4. Upload Unit PDFs
+                <i class="fa-solid fa-file-arrow-up mr-1.5"></i> 4. Upload Notes & Question Banks
               </button>
             </div>
 
             ${state.facultyTab === 'attendance' ? `
               <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
-                <div class="p-3.5 rounded-xl bg-indigo-50/80 border border-indigo-200 text-xs text-indigo-950 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
                   <div>
-                    <strong>EACE Cohort Structure:</strong> All <strong>80 students</strong> attend Theory lectures together in Room M003. For practical sessions only, the class divides into <strong>Batch A (40 students)</strong> and <strong>Batch B (40 students)</strong> due to lab workstation capacity.
-                  </div>
-                  <div class="flex bg-white border border-indigo-200 p-1 rounded-xl shrink-0">
-                    <button onclick="state.facultyCohortMode='all80'; render();" class="px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${state.facultyCohortMode === 'all80' ? 'bg-indigo-900 text-white' : 'text-slate-600'}">
-                      Theory: All 80
-                    </button>
-                    <button onclick="state.facultyCohortMode='batchA'; render();" class="px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${state.facultyCohortMode === 'batchA' ? 'bg-indigo-900 text-white' : 'text-slate-600'}">
-                      Lab Batch A (40)
-                    </button>
-                    <button onclick="state.facultyCohortMode='batchB'; render();" class="px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${state.facultyCohortMode === 'batchB' ? 'bg-indigo-900 text-white' : 'text-slate-600'}">
-                      Lab Batch B (40)
-                    </button>
-                  </div>
-                </div>
-
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-                  <div>
-                    <h2 class="text-lg font-extrabold text-slate-900">Attendance Register — Course ${fp.selectedCourse}</h2>
-                    <p class="text-xs text-slate-500">Showing key roll numbers from ${cohortDisplayTotal}-student cohort • Committing syncs live to Ashi Golhani's Student Portal.</p>
+                    <h2 class="text-lg font-extrabold text-slate-900">EACE 1st Semester Attendance Register (${fp.selectedCourse})</h2>
+                    <p class="text-xs text-slate-500">Theory lectures cover all <strong>80 EACE students</strong> together; Practical labs split into <strong>Batch A (40)</strong> & <strong>Batch B (40)</strong>.</p>
                   </div>
                   <div class="flex flex-wrap items-center gap-2">
-                    <span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-800 text-xs font-bold">
-                      Marked Present: ${presentSample} / ${filteredRoster.length} Sampled (Cohort: ${cohortDisplayTotal})
-                    </span>
-                    <button onclick="markFilteredFacultyAttendance(true)" class="px-3 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 text-xs font-bold cursor-pointer">
-                      All Present
-                    </button>
-                    <button onclick="saveFacultyAttendanceToERP()" class="px-4 py-1.5 rounded-xl bg-mits-navy hover:bg-indigo-900 text-white text-xs font-bold shadow cursor-pointer">
-                      <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Commit to SAMS ERP
+                    <div class="flex bg-slate-100 p-1 rounded-xl text-xs font-bold">
+                      <button onclick="state.facultyCohortMode='all80'; render();" class="px-3 py-1.5 rounded-lg cursor-pointer ${state.facultyCohortMode === 'all80' ? 'bg-mits-navy text-white' : 'text-slate-600'}">
+                        All EACE (80)
+                      </button>
+                      <button onclick="state.facultyCohortMode='batchA'; render();" class="px-3 py-1.5 rounded-lg cursor-pointer ${state.facultyCohortMode === 'batchA' ? 'bg-mits-navy text-white' : 'text-slate-600'}">
+                        Lab Batch A (40)
+                      </button>
+                      <button onclick="state.facultyCohortMode='batchB'; render();" class="px-3 py-1.5 rounded-lg cursor-pointer ${state.facultyCohortMode === 'batchB' ? 'bg-mits-navy text-white' : 'text-slate-600'}">
+                        Lab Batch B (40)
+                      </button>
+                    </div>
+
+                    <button onclick="markFilteredFacultyAttendance(true)" class="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold cursor-pointer">All Present</button>
+                    <button onclick="saveFacultyAttendanceToERP()" class="px-4 py-2 rounded-xl bg-indigo-900 hover:bg-indigo-800 text-white text-xs font-bold shadow cursor-pointer">
+                      <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Commit to Student Portal
                     </button>
                   </div>
                 </div>
 
-                <div class="overflow-x-auto">
-                  <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-50 text-slate-500 uppercase border-b border-slate-200">
-                      <tr>
-                        <th class="py-3 px-4">Enrollment No.</th>
-                        <th class="py-3 px-4">Student Name</th>
-                        <th class="py-3 px-4">Lab Group</th>
-                        <th class="py-3 px-4 text-right">Status Toggle</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                      ${filteredRoster.map(stu => `
-                        <tr class="${stu.roll === 'BTEC26O1022' ? 'bg-amber-50/70' : ''}">
-                          <td class="py-3 px-4 font-mono font-bold text-slate-800">${stu.roll}</td>
-                          <td class="py-3 px-4 font-semibold text-slate-900">
-                            ${stu.name} ${stu.roll === 'BTEC26O1022' ? '<span class="ml-1.5 px-2 py-0.5 rounded bg-amber-300 text-mits-navy text-[10px] font-extrabold">Synced Student</span>' : ''}
-                          </td>
-                          <td class="py-3 px-4 text-slate-500">${stu.batch}</td>
-                          <td class="py-3 px-4 text-right">
-                            <button onclick="toggleFacultyStudentAttendance('${stu.roll}')"
-                              class="px-4 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${stu.present ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}">
-                              ${stu.present ? 'PRESENT (P)' : 'ABSENT (A)'}
-                            </button>
-                          </td>
-                        </tr>
-                      `).join('')}
-                    </tbody>
-                  </table>
+                <div class="flex items-center justify-between text-xs bg-indigo-50/60 border border-indigo-100 px-4 py-2.5 rounded-xl">
+                  <span>Active Cohort Strength: <strong>${cohortDisplayTotal} Students</strong> (Sample Roll Roster Below)</span>
+                  <span class="font-bold text-indigo-900">Sample Marked Present: ${presentSample} / ${filteredRoster.length}</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  ${filteredRoster.map(stu => `
+                    <div onclick="toggleFacultyStudentAttendance('${stu.roll}')"
+                      class="p-3.5 rounded-xl border ${stu.present ? 'border-emerald-300 bg-emerald-50/40' : 'border-rose-300 bg-rose-50/40'} flex items-center justify-between cursor-pointer transition">
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="font-mono text-xs font-bold text-slate-500">${stu.roll}</span>
+                          <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">${stu.batch}</span>
+                        </div>
+                        <div class="font-bold text-slate-900 text-sm mt-0.5">${stu.name} ${stu.roll === 'BTEC26O1022' ? '<span class="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded ml-1">Active Student</span>' : ''}</div>
+                      </div>
+                      <span class="px-3 py-1 rounded-full text-xs font-extrabold ${stu.present ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}">
+                        ${stu.present ? 'P' : 'A'}
+                      </span>
+                    </div>
+                  `).join('')}
                 </div>
               </div>
             ` : ''}
 
             ${state.facultyTab === 'quiz-builder' ? `
               <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <form onsubmit="addDraftQuizQuestion(event)" class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-3.5">
-                  <h3 class="text-base font-extrabold text-slate-900">Step 1: Add Quiz Question</h3>
-                  <div class="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label class="block text-xs font-bold text-slate-700 mb-1">Question Type</label>
-                      <select id="fq-type" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white">
-                        <option value="mcq">Single Choice MCQ</option>
-                        <option value="integer">Integer / Numerical</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label class="block text-xs font-bold text-slate-700 mb-1">Points</label>
-                      <input id="fq-points" type="number" min="1" max="10" value="2" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono" />
-                    </div>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Question Prompt</label>
-                    <textarea id="fq-text" rows="2" required placeholder="Type question text..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"></textarea>
-                  </div>
-                  <div class="grid grid-cols-2 gap-2">
-                    <input id="fq-opt1" type="text" placeholder="Option 1 (for MCQ)" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs" />
-                    <input id="fq-opt2" type="text" placeholder="Option 2 (for MCQ)" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs" />
-                    <input id="fq-opt3" type="text" placeholder="Option 3 (for MCQ)" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs" />
-                    <input id="fq-opt4" type="text" placeholder="Option 4 (for MCQ)" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs" />
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Correct Option # (1–4) or Integer Answer</label>
-                    <input id="fq-correct" type="number" value="1" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono" />
-                  </div>
-                  <button type="submit" class="w-full py-2.5 rounded-xl bg-indigo-900 hover:bg-indigo-800 text-white text-xs font-bold cursor-pointer">
-                    <i class="fa-solid fa-plus mr-1"></i> Add Question to Draft
-                  </button>
-                </form>
-
-                <form onsubmit="publishFacultyQuizToStudents(event)" class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
-                  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                    <div>
-                      <h3 class="text-base font-extrabold text-slate-900">Step 2: Configure & Push Quiz to Student Portal</h3>
-                      <p class="text-xs text-slate-500">Published quizzes appear immediately in the Student Portal with DND & 2-Strike Anti-Cheat enabled.</p>
-                    </div>
-                    <span class="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold">${state.facultyQuizDraftQuestions.length} Questions Ready</span>
-                  </div>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label class="block text-xs font-bold text-slate-700 mb-1">Course</label>
-                      <select id="fq-course" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white">
-                        ${state.courses.filter(c => c.type === 'Theory').map(c => `<option value="${c.code}" ${c.code === '33261102' ? 'selected' : ''}>${c.code} – ${c.shortName}</option>`).join('')}
-                      </select>
-                    </div>
-                    <div>
-                      <label class="block text-xs font-bold text-slate-700 mb-1">Quiz Title</label>
-                      <input id="fq-title" type="text" required value="In-Class Quiz #5: Pointers & Dynamic Memory in C"
-                        class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
-                    </div>
-                    <div>
-                      <label class="block text-xs font-bold text-slate-700 mb-1">Timer (Minutes)</label>
-                      <input id="fq-duration" type="number" min="2" max="60" value="10"
-                        class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono" />
-                    </div>
-                  </div>
-
-                  <div class="space-y-2 max-h-56 overflow-y-auto pr-1">
-                    ${state.facultyQuizDraftQuestions.map((dq, i) => `
-                      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-3 text-xs">
-                        <div>
-                          <span class="font-bold text-indigo-800">Q${i + 1} (${dq.type.toUpperCase()} • ${dq.points} pts):</span>
-                          <span class="text-slate-800 ml-1">${dq.text}</span>
-                        </div>
-                        <button type="button" onclick="state.facultyQuizDraftQuestions.splice(${i},1); render();" class="text-rose-600 hover:text-rose-800 font-bold cursor-pointer">
-                          <i class="fa-solid fa-trash"></i>
-                        </button>
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                  <h2 class="text-lg font-extrabold text-slate-900">Add Question to Live Quiz</h2>
+                  <form onsubmit="addDraftQuizQuestion(event)" class="space-y-3 text-xs">
+                    <div class="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label class="block font-bold text-slate-700 mb-1">Question Type</label>
+                        <select id="fq-type" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold">
+                          <option value="mcq">Single Choice MCQ</option>
+                          <option value="integer">Integer / Numerical</option>
+                        </select>
                       </div>
-                    `).join('')}
+                      <div>
+                        <label class="block font-bold text-slate-700 mb-1">Marks / Points</label>
+                        <input id="fq-points" type="number" value="2" min="1" max="10" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="block font-bold text-slate-700 mb-1">Question Prompt</label>
+                      <textarea id="fq-text" rows="2" required placeholder="Type question statement here..." class="w-full px-3 py-2 rounded-xl border border-slate-300"></textarea>
+                    </div>
+
+                    <div class="space-y-1.5">
+                      <label class="block font-bold text-slate-700">Options (For MCQ)</label>
+                      <input id="fq-opt1" type="text" placeholder="Option 1" class="w-full px-3 py-1.5 rounded-lg border border-slate-300" />
+                      <input id="fq-opt2" type="text" placeholder="Option 2" class="w-full px-3 py-1.5 rounded-lg border border-slate-300" />
+                      <input id="fq-opt3" type="text" placeholder="Option 3" class="w-full px-3 py-1.5 rounded-lg border border-slate-300" />
+                      <input id="fq-opt4" type="text" placeholder="Option 4" class="w-full px-3 py-1.5 rounded-lg border border-slate-300" />
+                    </div>
+
+                    <div>
+                      <label class="block font-bold text-slate-700 mb-1">Correct Option # (1–4) OR Integer Answer</label>
+                      <input id="fq-correct" type="number" value="1" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono" />
+                    </div>
+
+                    <button type="submit" class="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer">
+                      <i class="fa-solid fa-plus mr-1"></i> Add Question to Draft
+                    </button>
+                  </form>
+                </div>
+
+                <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between space-y-5">
+                  <div class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+                      <div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-bold">Instant Student Portal Push</span>
+                        <h3 class="text-lg font-extrabold text-slate-900 mt-1">Configure & Publish Live Classroom Quiz</h3>
+                      </div>
+                      <span class="text-xs font-mono font-bold text-indigo-800">${state.facultyQuizDraftQuestions.length} Questions Ready</span>
+                    </div>
+
+                    <form id="publish-quiz-form" onsubmit="publishFacultyQuizToStudents(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                      <div>
+                        <label class="block font-bold text-slate-700 mb-1">Subject</label>
+                        <select id="fq-course" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold">
+                          ${state.courses.filter(c => c.type === 'Theory').map(c => `<option value="${c.code}" ${fp.selectedCourse === c.code ? 'selected' : ''}>${c.code} – ${c.shortName}</option>`).join('')}
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block font-bold text-slate-700 mb-1">Quiz Title</label>
+                        <input id="fq-title" type="text" value="In-Class Live Assessment #5" required class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+                      </div>
+                      <div>
+                        <label class="block font-bold text-slate-700 mb-1">Duration (Minutes)</label>
+                        <input id="fq-duration" type="number" value="10" min="2" max="60" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono" />
+                      </div>
+                    </form>
+
+                    <div class="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                      ${state.facultyQuizDraftQuestions.map((dq, i) => `
+                        <div class="p-3.5 rounded-xl border border-slate-200 bg-white flex items-start justify-between gap-3 text-xs">
+                          <div>
+                            <div class="font-bold text-indigo-800">Q${i + 1} (${dq.type.toUpperCase()} • ${dq.points} Pts)</div>
+                            <div class="font-semibold text-slate-900 mt-0.5">${dq.text}</div>
+                            ${dq.options ? `<div class="text-slate-500 mt-1">Options: ${dq.options.join(' | ')} (Correct: #${dq.correctIndex + 1})</div>` : `<div class="text-slate-500 mt-1">Correct Integer: ${dq.correct}</div>`}
+                          </div>
+                          <button onclick="state.facultyQuizDraftQuestions.splice(${i}, 1); render();" class="text-rose-600 hover:text-rose-800 font-bold cursor-pointer">
+                            <i class="fa-solid fa-trash"></i>
+                          </button>
+                        </div>
+                      `).join('')}
+                    </div>
                   </div>
 
-                  <button type="submit" class="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-extrabold shadow cursor-pointer">
-                    <i class="fa-solid fa-paper-plane mr-1.5"></i> Launch & Publish Live Quiz to Student Login
+                  <button onclick="document.getElementById('publish-quiz-form').requestSubmit()"
+                    class="w-full py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-extrabold text-sm shadow-md transition cursor-pointer">
+                    <i class="fa-solid fa-tower-broadcast mr-2"></i> Publish Live Quiz Now to All 80 Students
                   </button>
-                </form>
+                </div>
               </div>
             ` : ''}
 
@@ -3418,68 +3997,84 @@
               <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
                   <div>
-                    <h2 class="text-lg font-extrabold text-slate-900">4-Tier Assessment Marks Entry (Student: Ashi Golhani – BTEC26O1022)</h2>
-                    <p class="text-xs text-slate-500">Select an assessment tier below to update marks. Changes immediately sync to the Student Portal's Scorebook.</p>
+                    <h2 class="text-lg font-extrabold text-slate-900">4-Tier Examination Marks Entry & Student Scorebook Sync</h2>
+                    <p class="text-xs text-slate-500">Enter or update marks for <strong>Ashi Golhani (BTEC26O1022)</strong> across all 4 assessment tiers — changes immediately sync to her Student Scorebook.</p>
                   </div>
-                  <div class="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl">
-                    <button onclick="state.facultyMarksTier='classQuiz'; render();" class="px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${state.facultyMarksTier === 'classQuiz' ? 'bg-mits-navy text-white' : 'text-slate-600'}">1. Class Quizzes</button>
-                    <button onclick="state.facultyMarksTier='centralQuiz'; render();" class="px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${state.facultyMarksTier === 'centralQuiz' ? 'bg-mits-navy text-white' : 'text-slate-600'}">2. Central Level Quiz</button>
-                    <button onclick="state.facultyMarksTier='minor'; render();" class="px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${state.facultyMarksTier === 'minor' ? 'bg-mits-navy text-white' : 'text-slate-600'}">3. Minor Exams</button>
-                    <button onclick="state.facultyMarksTier='major'; render();" class="px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${state.facultyMarksTier === 'major' ? 'bg-mits-navy text-white' : 'text-slate-600'}">4. Major Exams</button>
+                  <div class="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+                    <button onclick="state.facultyMarksTier='classQuiz'; render();" class="px-3 py-1.5 rounded-lg cursor-pointer ${state.facultyMarksTier === 'classQuiz' ? 'bg-mits-navy text-white' : 'text-slate-600'}">1. Class Quiz</button>
+                    <button onclick="state.facultyMarksTier='centralQuiz'; render();" class="px-3 py-1.5 rounded-lg cursor-pointer ${state.facultyMarksTier === 'centralQuiz' ? 'bg-mits-navy text-white' : 'text-slate-600'}">2. Central Quiz (20)</button>
+                    <button onclick="state.facultyMarksTier='minor'; render();" class="px-3 py-1.5 rounded-lg cursor-pointer ${state.facultyMarksTier === 'minor' ? 'bg-mits-navy text-white' : 'text-slate-600'}">3. Minor Exam (30)</button>
+                    <button onclick="state.facultyMarksTier='major'; render();" class="px-3 py-1.5 rounded-lg cursor-pointer ${state.facultyMarksTier === 'major' ? 'bg-mits-navy text-white' : 'text-slate-600'}">4. Major Exam (50)</button>
                   </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  ${state.courses.map(c => {
-                    if (state.facultyMarksTier === 'centralQuiz' && c.type === 'Lab') return '';
-                    let curVal = '';
-                    let maxLabel = '';
-                    if (state.facultyMarksTier === 'classQuiz') { curVal = c.classQuizMarks; maxLabel = `/ ${c.classQuizMax} Marks`; }
-                    else if (state.facultyMarksTier === 'centralQuiz') { curVal = c.centralQuiz; maxLabel = `/ 20 Marks (CBT)`; }
-                    else if (state.facultyMarksTier === 'minor') { curVal = c.minorMarks ?? ''; maxLabel = `/ 30 Marks`; }
-                    else if (state.facultyMarksTier === 'major') { curVal = c.majorMarks ?? ''; maxLabel = `/ 50 Marks`; }
+                <div class="overflow-x-auto">
+                  <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-50 text-slate-500 uppercase border-b border-slate-200">
+                      <tr>
+                        <th class="py-3 px-4">Course Code & Title</th>
+                        <th class="py-3 px-4">Type</th>
+                        <th class="py-3 px-4">Current Status</th>
+                        <th class="py-3 px-4">Enter Marks (Ashi Golhani)</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                      ${state.courses.map(c => {
+                        let curVal = "";
+                        let maxVal = 30;
+                        let disabled = false;
+                        if (state.facultyMarksTier === 'classQuiz') { curVal = c.classQuizMarks; maxVal = c.classQuizMax; }
+                        else if (state.facultyMarksTier === 'centralQuiz') {
+                          if (c.type === 'Lab') disabled = true;
+                          curVal = c.centralQuiz ?? ""; maxVal = 20;
+                        }
+                        else if (state.facultyMarksTier === 'minor') { curVal = c.minorMarks ?? ""; maxVal = 30; }
+                        else if (state.facultyMarksTier === 'major') { curVal = c.majorMarks ?? ""; maxVal = 50; }
 
-                    return `
-                      <div class="p-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-4">
-                        <div>
-                          <div class="font-mono text-xs font-bold text-indigo-800">${c.code} (${c.type})</div>
-                          <div class="font-bold text-slate-900 text-sm">${c.name}</div>
-                        </div>
-                        <div class="flex items-center gap-2 shrink-0">
-                          <input type="number" step="0.5" min="0" max="50" value="${curVal}" placeholder="Pending"
-                            onchange="updateAshiTierMark('${c.code}', '${state.facultyMarksTier}', this.value)"
-                            class="w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-xs font-bold text-right" />
-                          <span class="text-xs text-slate-500 font-medium">${maxLabel}</span>
-                        </div>
-                      </div>
-                    `;
-                  }).join('')}
+                        return `
+                          <tr>
+                            <td class="py-3 px-4 font-bold text-slate-900"><span class="font-mono text-indigo-800 mr-2">${c.code}</span>${c.name}</td>
+                            <td class="py-3 px-4">${c.type}</td>
+                            <td class="py-3 px-4 text-slate-500">${state.facultyMarksTier === 'minor' ? c.minorStatus : state.facultyMarksTier === 'major' ? c.majorStatus : 'Active Sync'}</td>
+                            <td class="py-3 px-4">
+                              ${disabled ? `<span class="text-slate-400 italic">Not Applicable for Lab</span>` : `
+                                <div class="flex items-center gap-2">
+                                  <input type="number" min="0" max="${maxVal}" value="${curVal}" placeholder="Pending"
+                                    onchange="updateAshiTierMark('${c.code}', '${state.facultyMarksTier}', this.value)"
+                                    class="w-24 px-3 py-1.5 rounded-lg border border-slate-300 font-mono font-bold text-center" />
+                                  <span class="text-slate-400 font-mono">/ ${maxVal}</span>
+                                </div>
+                              `}
+                            </td>
+                          </tr>
+                        `;
+                      }).join('')}
+                    </tbody>
+                  </table>
                 </div>
-
-                <div class="flex justify-end pt-2">
-                  <button onclick="render(); showToast('All 4-tier assessment marks synced to Student Scorebook!', 'success');"
+                <div class="flex justify-end">
+                  <button onclick="render(); showToast('All 4-Tier Exam Marks synced to Student Scorebook!', 'success');"
                     class="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold cursor-pointer">
-                    <i class="fa-solid fa-check-double mr-1.5"></i> Sync Marks to Student Portal
+                    <i class="fa-solid fa-check-double mr-1.5"></i> Save & Publish Marks to Student Portal
                   </button>
                 </div>
               </div>
             ` : ''}
 
             ${state.facultyTab === 'materials' ? `
-              <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <form onsubmit="uploadFacultyMaterial(event)" class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
-                  <h3 class="text-base font-extrabold text-slate-900">Upload Unit Study Resource</h3>
-                  <p class="text-xs text-slate-500">Uploaded files appear immediately inside the Student Portal's 5-Unit Syllabus Repository.</p>
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Course</label>
-                    <select id="fac-mat-course" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold">
-                      ${state.courses.map(c => `<option value="${c.code}" ${c.code === '33261102' ? 'selected' : ''}>${c.code} – ${c.shortName}</option>`).join('')}
-                    </select>
-                  </div>
-                  <div class="grid grid-cols-2 gap-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs max-w-2xl">
+                <h2 class="text-lg font-extrabold text-slate-900 mb-4">Publish Unit Notes & Question Banks to Student Portal</h2>
+                <form onsubmit="uploadFacultyMaterial(event)" class="space-y-4 text-xs">
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label class="block text-xs font-bold text-slate-700 mb-1">Syllabus Unit</label>
-                      <select id="fac-mat-unit" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold">
+                      <label class="block font-bold text-slate-700 mb-1">Course</label>
+                      <select id="fac-mat-course" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-semibold">
+                        ${state.courses.map(c => `<option value="${c.code}">${c.code} – ${c.shortName}</option>`).join('')}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block font-bold text-slate-700 mb-1">Syllabus Unit</label>
+                      <select id="fac-mat-unit" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-semibold">
                         <option value="1">Unit 1</option>
                         <option value="2">Unit 2</option>
                         <option value="3">Unit 3</option>
@@ -3488,39 +4083,23 @@
                       </select>
                     </div>
                     <div>
-                      <label class="block text-xs font-bold text-slate-700 mb-1">Resource Type</label>
-                      <select id="fac-mat-type" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold">
+                      <label class="block font-bold text-slate-700 mb-1">Resource Type</label>
+                      <select id="fac-mat-type" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-semibold">
                         <option value="PDF">Lecture PDF</option>
-                        <option value="Notes">Handwritten Notes</option>
+                        <option value="Notes">Handwritten / Digital Notes</option>
                         <option value="Question Bank">Question Bank</option>
                       </select>
                     </div>
                   </div>
                   <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Document Title</label>
-                    <input id="fac-mat-title" type="text" required placeholder="e.g. Unit 4 Dynamic Memory Allocation in C"
-                      class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                    <label class="block font-bold text-slate-700 mb-1">Document Title</label>
+                    <input id="fac-mat-title" type="text" required placeholder="e.g. Unit 4 Pointers & Dynamic Memory Question Bank"
+                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300" />
                   </div>
-                  <button type="submit" class="w-full py-2.5 rounded-xl bg-mits-navy hover:bg-indigo-900 text-white text-xs font-bold cursor-pointer">
-                    <i class="fa-solid fa-upload mr-1.5"></i> Publish Resource to Student Portal
+                  <button type="submit" class="px-6 py-3 rounded-xl bg-mits-navy hover:bg-indigo-900 text-white font-bold cursor-pointer">
+                    <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i> Publish Resource Instantly
                   </button>
                 </form>
-
-                <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-3">
-                  <h3 class="text-base font-extrabold text-slate-900">Recently Published Resources (33261102 – Computer Programming)</h3>
-                  <div class="space-y-2.5">
-                    ${state.courses.find(c => c.code === '33261102').materials.map(m => `
-                      <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
-                        <div>
-                          <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-bold">Unit ${m.unit} • ${m.type}</span>
-                          <div class="font-bold text-slate-900 text-xs mt-1">${m.title}</div>
-                          <div class="text-[11px] text-slate-400">Uploaded ${m.date} • ${m.size}</div>
-                        </div>
-                        <span class="text-xs font-bold text-emerald-700"><i class="fa-solid fa-check-double mr-1"></i>Live</span>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
               </div>
             ` : ''}
           </main>
@@ -3528,74 +4107,88 @@
       `;
     }
 
-    function publishNewClubEvent(e) {
+    /*************************************************************************
+     * 4. CLUB & SOCIETY PORTAL
+     *************************************************************************/
+    function publishClubEvent(e) {
       e.preventDefault();
-      const title = document.getElementById('club-evt-title').value.trim();
-      const venue = document.getElementById('club-evt-venue').value;
-      const dateStr = document.getElementById('club-evt-date').value.trim() || "Dec 06, 2026 • 03:00 PM";
-      const solo = document.getElementById('club-evt-solo').value.trim() || "Free";
-      const duo = document.getElementById('club-evt-duo').value.trim() || "₹100";
-      const squad = document.getElementById('club-evt-squad').value.trim() || "₹200";
-      const perks = document.getElementById('club-evt-perks').value.trim() || "E-Certificates + Merit Goodies";
-      const desc = document.getElementById('club-evt-desc').value.trim();
+      const title = document.getElementById('ce-title').value.trim();
+      const club = document.getElementById('ce-club').value;
+      const category = document.getElementById('ce-category').value;
+      const date = document.getElementById('ce-date').value.trim();
+      const venue = document.getElementById('ce-venue').value.trim();
+      const solo = document.getElementById('ce-solo').value.trim() || "Free";
+      const duo = document.getElementById('ce-duo').value.trim() || "N/A";
+      const squad = document.getElementById('ce-squad').value.trim() || "N/A";
+      const perks = document.getElementById('ce-perks').value.trim();
+      const desc = document.getElementById('ce-desc').value.trim();
 
-      if (!title || !desc) return;
+      if (!title) return;
 
-      const newEvt = {
+      state.events.unshift({
         id: `EVT-${Math.floor(200 + Math.random() * 700)}`,
         title,
-        club: state.clubProfile.clubName,
-        category: "Tech & Societies",
-        date: dateStr,
+        club,
+        category,
+        date,
         venue,
         fees: { solo, duo, squad },
         perks,
         desc,
         registrations: 1,
         registered: false
-      };
+      });
 
-      state.events.unshift(newEvt);
-      state.announcements.unshift(`🎉 NEW EVENT PUBLISHED: "${title}" by ${state.clubProfile.clubName} at ${venue} (${dateStr})!`);
-      e.target.reset();
+      state.announcements.unshift(`🎉 NEW EVENT: ${title} by ${club} on ${date} at ${venue}!`);
+      state.notices.unshift({
+        id: `NTC-${Date.now()}`,
+        category: "Events",
+        title: `New Campus Event: ${title} (${club})`,
+        body: `${desc} Date: ${date} | Venue: ${venue} | Perks: ${perks}.`,
+        date: "Just Now",
+        issuedBy: `${club} (SAC)`,
+        unread: true
+      });
       render();
-      showToast(`"${title}" published! It is now live in the Student Portal's Events Feed.`, "success");
+      showToast(`Event "${title}" published live to Student Clubs & Events Hub!`, "success");
     }
 
-    function broadcastClubNotice(e) {
+    function pushCampusAnnouncement(e) {
       e.preventDefault();
-      const msg = document.getElementById('club-broadcast-msg').value.trim();
+      const msg = document.getElementById('club-ann-input').value.trim();
       if (!msg) return;
-      state.announcements.unshift(`📣 [${state.clubProfile.clubName}]: ${msg}`);
-      document.getElementById('club-broadcast-msg').value = "";
+      state.announcements.unshift(`📣 [${state.clubProfile.clubName}] ${msg}`);
+      state.notices.unshift({
+        id: `NTC-${Date.now()}`,
+        category: "Events",
+        title: `Announcement from ${state.clubProfile.clubName}`,
+        body: msg,
+        date: "Just Now",
+        issuedBy: `${state.clubProfile.clubName} (${state.clubProfile.role})`,
+        unread: true
+      });
+      document.getElementById('club-ann-input').value = "";
       render();
-      showToast("Announcement pushed to SAMS Campus Live Ticker!", "success");
-    }
-
-    function deleteClubEvent(id) {
-      state.events = state.events.filter(e => e.id !== id);
-      render();
-      showToast("Event removed from campus feed.", "info");
+      showToast("Campus announcement pushed to live ticker & Notices Hub!", "success");
     }
 
     function renderClubPortal() {
       const cp = state.clubProfile;
       return `
         <div class="min-h-screen bg-slate-100 flex flex-col">
-          <header class="bg-gradient-to-r from-emerald-950 via-teal-900 to-mits-navy text-white px-4 sm:px-8 py-4 shadow-lg">
+          <header class="bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-900 text-white px-4 sm:px-8 py-4 shadow-lg border-b border-emerald-500/30">
             <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
               <div class="flex items-center gap-3.5">
                 ${getMitsCrestSVG("w-11 h-11")}
                 <div>
                   <div class="flex items-center gap-2">
-                    <span class="px-2.5 py-0.5 rounded bg-emerald-400 text-emerald-950 text-[10px] font-extrabold uppercase">${cp.role}</span>
-                    <span class="text-xs text-emerald-200 font-mono">Supervisor: ${cp.facultySupervisor}</span>
+                    <span class="px-2.5 py-0.5 rounded bg-emerald-400 text-emerald-950 text-[10px] font-extrabold uppercase">SAC Club Council</span>
+                    <span class="text-xs text-emerald-200 font-mono">${cp.email}</span>
                   </div>
-                  <h1 class="text-lg font-extrabold mt-0.5">${cp.clubName}</h1>
-                  <p class="text-xs text-slate-300">Logged in as ${cp.bearerName} (${cp.email})</p>
+                  <h1 class="text-lg font-extrabold mt-0.5">${cp.clubName} — ${cp.role}</h1>
+                  <p class="text-xs text-emerald-300">Faculty Supervisor: ${cp.facultySupervisor}</p>
                 </div>
               </div>
-
               <button onclick="logoutToLanding()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer">
                 <i class="fa-solid fa-right-from-bracket mr-1"></i> Switch Portal
               </button>
@@ -3603,44 +4196,130 @@
           </header>
 
           <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="space-y-6">
-              <form onsubmit="publishNewClubEvent(event)" class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-3.5">
-                <div class="flex items-center justify-between">
-                  <h2 class="text-base font-extrabold text-slate-900">Publish New Event / Workshop</h2>
-                  <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">Live Sync</span>
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Event / Workshop Title</label>
-                  <input id="club-evt-title" type="text" required placeholder="e.g. Edge AI & ESP32 Bootcamp 2026"
-                    class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
-                </div>
-                <div class="grid grid-cols-2 gap-2.5">
+            <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
+              <h2 class="text-lg font-extrabold text-slate-900 mb-1">Create & Publish Campus Event / Competition</h2>
+              <p class="text-xs text-slate-500 mb-5">Published events immediately appear in the Student Clubs & Events Feed and Campus Ticker.</p>
+
+              <form onsubmit="publishClubEvent(event)" class="space-y-4 text-xs">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Venue (SH-1 to SH-5)</label>
-                    <select id="club-evt-venue" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white">
-                      <option value="SH-1 (Seminar Hall 1)">SH-1 (Seminar Hall 1)</option>
-                      <option value="SH-2 (Seminar Hall 2)">SH-2 (Seminar Hall 2)</option>
-                      <option value="SH-3 (Seminar Hall 3)" selected>SH-3 (Seminar Hall 3)</option>
-                      <option value="SH-4 (Seminar Hall 4)">SH-4 (Seminar Hall 4)</option>
-                      <option value="SH-5 (Seminar Hall 5)">SH-5 (Seminar Hall 5)</option>
-                      <option value="CIOT Block Lab M005">CIOT Block Lab M005</option>
-                    </select>
+                    <label class="block font-bold text-slate-700 mb-1">Event / Hackathon Title</label>
+                    <input id="ce-title" type="text" required placeholder="e.g. IoT Innovation Sprint 2026" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300" />
                   </div>
                   <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Date & Time</label>
-                    <input id="club-evt-date" type="text" value="Dec 06, 2026 • 03:00 PM"
-                      class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                    <label class="block font-bold text-slate-700 mb-1">Organizing Club / Society</label>
+                    <select id="ce-club" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-semibold">
+                      ${state.clubsDirectory.map(c => `<option value="${c.name}" ${c.name === cp.clubName ? 'selected' : ''}>${c.name}</option>`).join('')}
+                    </select>
                   </div>
                 </div>
 
-                <div class="grid grid-cols-3 gap-2">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Solo Fee</label>
-                    <input id="club-evt-solo" type="text" value="Free" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono" />
+                    <label class="block font-bold text-slate-700 mb-1">Category</label>
+                    <select id="ce-category" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white">
+                      <option value="Tech & Societies">Tech & Societies</option>
+                      <option value="Cultural & Literary">Cultural & Literary</option>
+                      <option value="Professional, Sports & Cells">Professional, Sports & Cells</option>
+                    </select>
                   </div>
                   <div>
-                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Duo Fee</label>
-                    <input id="club-evt-duo" type="text" value="₹99" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono" />
+                    <label class="block font-bold text-slate-700 mb-1">Date & Time</label>
+                    <input id="ce-date" type="text" required value="Nov 28, 2026 • 11:00 AM" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300" />
                   </div>
                   <div>
-                    <label class="block text-[11px] font-bold text-
+                    <label class="block font-bold text-slate-700 mb-1">Venue (SH-3, SH-5, Ground)</label>
+                    <input id="ce-venue" type="text" required value="SH-5 (Seminar Hall 5)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300" />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3">
+                  <div>
+                    <label class="block font-bold text-slate-700 mb-1">Solo Entry Fee</label>
+                    <input id="ce-solo" type="text" value="₹50" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono" />
+                  </div>
+                  <div>
+                    <label class="block font-bold text-slate-700 mb-1">Duo Entry Fee</label>
+                    <input id="ce-duo" type="text" value="₹90" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono" />
+                  </div>
+                  <div>
+                    <label class="block font-bold text-slate-700 mb-1">Squad / Team Fee</label>
+                    <input id="ce-squad" type="text" value="₹150 (Team of 4)" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono" />
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Perks & Certification Details</label>
+                  <input id="ce-perks" type="text" required value="Hard Copy Merit Certificates + E-Certificates + Cash Prizes" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300" />
+                </div>
+
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Event Overview & Rules</label>
+                  <textarea id="ce-desc" rows="3" required placeholder="Describe format, team size, and eligibility..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300"></textarea>
+                </div>
+
+                <button type="submit" class="px-6 py-3 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white font-bold shadow cursor-pointer">
+                  <i class="fa-solid fa-bullhorn mr-1.5"></i> Publish Event to Student Portal
+                </button>
+              </form>
+            </div>
+
+            <div class="space-y-6">
+              <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
+                <h3 class="font-extrabold text-slate-900 text-sm">Push Campus Ticker & Notice</h3>
+                <form onsubmit="pushCampusAnnouncement(event)" class="space-y-2.5 text-xs">
+                  <textarea id="club-ann-input" rows="2" required placeholder="Type urgent workshop reminder or venue update..." class="w-full px-3 py-2 rounded-xl border border-slate-300"></textarea>
+                  <button type="submit" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-mits-navy font-extrabold cursor-pointer">
+                    Broadcast Announcement
+                  </button>
+                </form>
+              </div>
+
+              <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
+                <h3 class="font-extrabold text-slate-900 text-sm">Live Published Events (${state.events.length})</h3>
+                <div class="space-y-2.5 max-h-80 overflow-y-auto">
+                  ${state.events.map(e => `
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                      <div class="font-bold text-slate-900">${e.title}</div>
+                      <div class="text-slate-500 mt-0.5">${e.club} • ${e.venue}</div>
+                      <div class="text-emerald-700 font-bold mt-1">${e.registrations} Registered Students</div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      `;
+    }
+
+    /*************************************************************************
+     * ROOT RENDER DISPATCHER & INITIALIZATION
+     *************************************************************************/
+    function render() {
+      saveState();
+      const app = document.getElementById('app');
+      if (!app) return;
+
+      if (state.currentPortal === 'landing') {
+        app.innerHTML = renderLandingPage();
+      } else if (state.currentPortal === 'student') {
+        app.innerHTML = renderStudentPortal();
+        const activeQz = getActiveQuiz();
+        if (state.studentTab === 'quiz' && activeQz && activeQz.status === 'submitted') {
+          setTimeout(renderGradingBellCurve, 30);
+        }
+      } else if (state.currentPortal === 'faculty') {
+        app.innerHTML = renderFacultyPortal();
+      } else if (state.currentPortal === 'club') {
+        app.innerHTML = renderClubPortal();
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      render();
+      startLiveClockEngine();
+    });
+  </script>
+</body>
+</html>
