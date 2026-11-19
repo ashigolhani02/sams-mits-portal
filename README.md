@@ -8,7 +8,7 @@ I want you to update my existing GitHub project professionally.
 https://github.com/ashigolhani02/sams-mits-portal
 
 **Published Live Website:**
-https://sites.google.com/view/samsmitsgwaliorcentreforintern/full-page-embed
+https://sites.google.com/view/mitsgwaliorsamsliveacademicpor/full-page-embed
 
 ## Project Details
 
